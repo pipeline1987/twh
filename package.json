@@ -6,12 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "archive:generate": "tsx scripts/generate-archive.mts",
+    "search:up": "docker compose up -d",
+    "search:down": "docker compose down",
+    "search:index": "tsx scripts/index-typesense.mts"
   },
   "dependencies": {
     "next": "16.4.2",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "typesense": "^3.2.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
@@ -21,6 +26,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
