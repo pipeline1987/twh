@@ -118,6 +118,36 @@ async function main() {
     });
   }
 
+  for (const name of ["herald_popular_queries", "herald_nohits_queries"]) {
+    const present = (await client.collections().retrieve()).some((collection) => collection.name === name);
+    if (!present) {
+      await client.collections().create({
+        name,
+        fields: [
+          { name: "q", type: "string" },
+          { name: "count", type: "int32" },
+        ],
+        default_sorting_field: "count",
+      });
+    }
+  }
+  await client.analyticsV1.rules().upsert("herald_popular_queries", {
+    type: "popular_queries",
+    params: {
+      source: { collections: [COLLECTION] },
+      destination: { collection: "herald_popular_queries" },
+      limit: 500,
+    },
+  });
+  await client.analyticsV1.rules().upsert("herald_nohits_queries", {
+    type: "nohits_queries",
+    params: {
+      source: { collections: [COLLECTION] },
+      destination: { collection: "herald_nohits_queries" },
+      limit: 500,
+    },
+  });
+
   console.log(`Indexed ${documents.length} articles into ${COLLECTION}`);
 }
 

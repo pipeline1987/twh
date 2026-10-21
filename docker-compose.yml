@@ -10,4 +10,4 @@ services:
       TYPESENSE_ENABLE_CORS: "true"
     volumes:
       - ./typesense-data:/data
-    command: "--data-dir /data --api-key=wizardherald-dev --enable-cors"
+    command: "--data-dir /data --api-key=wizardherald-dev --enable-cors --enable-search-analytics --analytics-dir /data/analytics --analytics-flush-interval=60"

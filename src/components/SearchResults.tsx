@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SearchHitLink } from "@/components/SearchHitLink";
 import { AUTHORS, TOPICS } from "@/data/catalog";
 import { formatShortDate } from "@/lib/format";
 import { searchHref } from "@/lib/search-url";
@@ -79,9 +80,15 @@ export function SearchResults({
                 </Link>
               </p>
               <h3 className="mt-1 font-[family-name:var(--font-herald-display)] text-2xl leading-tight">
-                <Link href={`/article/${hit.article.slug}`} className="hover:text-howler">
+                <SearchHitLink
+                  href={`/article/${hit.article.slug}`}
+                  query={filters.q}
+                  slug={hit.article.slug}
+                  title={hit.article.title}
+                  className="hover:text-howler"
+                >
                   {hit.article.title}
-                </Link>
+                </SearchHitLink>
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-soft">{hit.snippet}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.16em] text-ink-soft">

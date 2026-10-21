@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AUTHORS, TOPICS } from "@/data/catalog";
+import type { CountRow } from "@/lib/analytics";
 import { hasActiveFilters, searchHref, toggleFilter } from "@/lib/search-url";
 import type { FacetValue, SearchFilters, SearchResult } from "@/lib/types";
 
@@ -55,10 +56,12 @@ export function SearchForm({
   filters,
   result,
   bounds,
+  loudest,
 }: {
   filters: SearchFilters;
   result: SearchResult;
   bounds: { from: string; to: string };
+  loudest: CountRow[];
 }) {
   const decadeActive = DECADES.find(
     (decade) => decade.from === filters.from && decade.to === filters.to,
@@ -76,7 +79,8 @@ export function SearchForm({
             name="q"
             type="search"
             defaultValue={filters.q ?? ""}
-            placeholder="loud letters from the owlery, Rita’s 2018 Quidditch…"
+            placeholder="loud letters from the owlery, Rita's 2018 Quidditch..."
+            suppressHydrationWarning
             className="mt-1 w-full border border-ink bg-parchment px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-howler"
           />
         </div>
@@ -92,6 +96,31 @@ export function SearchForm({
           Shout this query
         </button>
       </form>
+
+      {loudest.length > 0 ? (
+        <section>
+          <p className="border-b border-ink pb-1 text-[11px] font-semibold uppercase tracking-[0.2em]">
+            Loudest shouts
+          </p>
+          <ul className="mt-2 grid gap-1">
+            {loudest.map((item) => (
+              <li key={item.value}>
+                <Link href={searchHref({ q: item.value })} className="flex justify-between gap-3 text-sm hover:text-howler">
+                  <span className="truncate">{item.value}</span>
+                  <span className="text-xs tabular-nums text-ink-soft">{item.count}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link href="/search/desk" className="mt-2 inline-block text-[11px] uppercase tracking-[0.16em] hover:text-howler">
+            Open the index desk
+          </Link>
+        </section>
+      ) : (
+        <Link href="/search/desk" className="text-[11px] uppercase tracking-[0.16em] hover:text-howler">
+          Index desk
+        </Link>
+      )}
 
       {hasActiveFilters(filters) ? (
         <div className="flex flex-wrap gap-2">

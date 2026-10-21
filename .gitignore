@@ -37,6 +37,9 @@ yarn-error.log*
 # typesense
 /typesense-data
 
+# search analytics ledger
+/analytics-data
+
 # vercel
 .vercel
 
