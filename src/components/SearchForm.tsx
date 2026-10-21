@@ -76,7 +76,7 @@ export function SearchForm({
             name="q"
             type="search"
             defaultValue={filters.q ?? ""}
-            placeholder="Howlers, Quidditch, Howgwarts…"
+            placeholder="loud letters from the owlery, Rita’s 2018 Quidditch…"
             className="mt-1 w-full border border-ink bg-parchment px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-howler"
           />
         </div>

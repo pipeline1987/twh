@@ -123,7 +123,14 @@ export function correctTerm(term: string) {
   return closestVocab(term);
 }
 
-export function resolveSearchQuery(raw: string) {
+export type ResolvedQuery = {
+  original: string;
+  q: string;
+  terms: string[];
+  corrected: boolean;
+};
+
+export function resolveSearchQuery(raw: string): ResolvedQuery {
   const original = raw.trim();
   const terms = normalizeQuery(original).split(" ").filter(Boolean);
   const resolved = terms.map(correctTerm);

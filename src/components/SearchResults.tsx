@@ -1,7 +1,25 @@
 import Link from "next/link";
+import { AUTHORS, TOPICS } from "@/data/catalog";
 import { formatShortDate } from "@/lib/format";
 import { searchHref } from "@/lib/search-url";
 import type { SearchFilters, SearchResult } from "@/lib/types";
+
+function understoodLabel(result: SearchResult) {
+  if (!result.understood) return "";
+  const parts = [
+    result.understood.topic
+      ? TOPICS.find((topic) => topic.slug === result.understood?.topic)?.name
+      : undefined,
+    result.understood.author
+      ? AUTHORS.find((author) => author.slug === result.understood?.author)?.name
+      : undefined,
+    result.understood.year,
+    result.understood.from || result.understood.to
+      ? [result.understood.from, result.understood.to].filter(Boolean).join(" – ")
+      : undefined,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
 
 export function SearchResults({
   result,
@@ -18,11 +36,15 @@ export function SearchResults({
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-howler">
             {result.engine === "typesense" ? "Typesense index" : "Bound archive index"}
+            {result.mode === "semantic" ? " · semantic" : ""}
           </p>
           <h2 className="font-[family-name:var(--font-herald-display)] text-3xl">
             {result.found.toLocaleString("en-GB")}{" "}
             {result.found === 1 ? "dispatch" : "dispatches"}
           </h2>
+          {understoodLabel(result) ? (
+            <p className="mt-1 text-sm text-ink-soft">Heard as {understoodLabel(result)}</p>
+          ) : null}
         </div>
         {filters.q ? (
           <p className="text-sm italic text-ink-soft">

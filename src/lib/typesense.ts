@@ -24,7 +24,7 @@ export async function getTypesenseClient() {
       },
     ],
     apiKey: config.apiKey,
-    connectionTimeoutSeconds: 2,
+    connectionTimeoutSeconds: 8,
   });
 }
 

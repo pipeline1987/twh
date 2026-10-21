@@ -15,7 +15,7 @@ export function SearchBox({
         name="q"
         type="search"
         defaultValue={defaultQuery}
-        placeholder="Search topic, author, or Howgwarts typo…"
+        placeholder="Ask in a sentence, or try Howgwarts…"
         className="w-full border border-ink bg-parchment px-3 py-2 text-sm tracking-wide text-ink placeholder:text-ink-soft/70 focus:outline-none focus:ring-2 focus:ring-howler"
       />
       {!compact ? (

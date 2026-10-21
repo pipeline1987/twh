@@ -1,6 +1,13 @@
 import { AUTHORS, TOPICS } from "@/data/catalog";
 import { getArticles } from "@/lib/articles";
-import { normalizeQuery, resolveSearchQuery } from "@/lib/query";
+import {
+  applyNaturalFilters,
+  expandArchiveTerms,
+  parseNaturalQuery,
+  understoodFrom,
+  type NaturalQuery,
+} from "@/lib/nl-query";
+import { normalizeQuery, resolveSearchQuery, type ResolvedQuery } from "@/lib/query";
 import type { Article, SearchFilters, SearchHit, SearchResult } from "@/lib/types";
 import { getTypesenseClient, TYPESENSE_COLLECTION, typesenseAvailable } from "@/lib/typesense";
 
@@ -35,22 +42,30 @@ function termHits(haystack: string, term: string) {
   return haystack.includes(term);
 }
 
-function scoreArticle(article: Article, terms: string[], allowBody: boolean) {
+function scoreArticle(article: Article, terms: string[], allowBody: boolean, requireAll: boolean) {
   if (terms.length === 0) return 1;
   const fields = fieldHaystacks(article);
   let score = 0;
+  let matched = 0;
   for (const term of terms) {
     const inTitle = termHits(fields.title, term);
     const inDek = termHits(fields.dek, term);
     const inAuthor = termHits(fields.author, term);
+    const inTopic = termHits(fields.topic, term);
     const inBody = termHits(fields.body, term);
-    if (!inTitle && !inDek && !inAuthor && !(allowBody && inBody)) return 0;
+    const hit = inTitle || inDek || inAuthor || inTopic || (allowBody && inBody);
+    if (!hit) {
+      if (requireAll) return 0;
+      continue;
+    }
+    matched += 1;
     if (inTitle) score += 12;
     if (inAuthor) score += 8;
+    if (inTopic) score += 6;
     if (inDek) score += 4;
     if (allowBody && inBody) score += 1;
   }
-  return score;
+  return matched === 0 ? 0 : score;
 }
 
 type FacetKey = "topic" | "author" | "year";
@@ -100,18 +115,30 @@ function archiveFacets(matched: Article[], filters: SearchFilters) {
   };
 }
 
-function withDidYouMean(result: SearchResult, resolved: ReturnType<typeof resolveSearchQuery>): SearchResult {
-  return resolved.corrected ? { ...result, didYouMean: resolved.q } : result;
+function decorateResult(
+  result: Omit<SearchResult, "didYouMean" | "understood" | "mode"> &
+    Partial<Pick<SearchResult, "didYouMean" | "understood" | "mode">>,
+  resolved: ResolvedQuery,
+  parsed: NaturalQuery,
+  mode: SearchResult["mode"],
+): SearchResult {
+  return {
+    ...result,
+    mode,
+    understood: understoodFrom(parsed),
+    ...(resolved.corrected ? { didYouMean: resolved.q } : {}),
+  };
 }
 
-function searchArchive(filters: SearchFilters, resolved: ReturnType<typeof resolveSearchQuery>): SearchResult {
+function searchArchive(filters: SearchFilters, resolved: ResolvedQuery, parsed: NaturalQuery): SearchResult {
   const page = Math.max(1, filters.page ?? 1);
   const perPage = filters.perPage ?? DEFAULT_PER_PAGE;
-  const terms = resolved.terms;
+  const terms = parsed.natural ? expandArchiveTerms(parsed) : resolved.terms;
+  const requireAll = !parsed.natural;
 
   const rank = (articles: Article[], allowBody: boolean) =>
     articles
-      .map((article) => ({ article, score: scoreArticle(article, terms, allowBody) }))
+      .map((article) => ({ article, score: scoreArticle(article, terms, allowBody, requireAll) }))
       .filter((entry) => (terms.length === 0 ? true : entry.score > 0))
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -134,7 +161,7 @@ function searchArchive(filters: SearchFilters, resolved: ReturnType<typeof resol
     snippet: snippetFrom(entry.article, terms),
   }));
 
-  return withDidYouMean(
+  return decorateResult(
     {
       hits,
       found: ranked.length,
@@ -144,6 +171,8 @@ function searchArchive(filters: SearchFilters, resolved: ReturnType<typeof resol
       ...facets,
     },
     resolved,
+    parsed,
+    parsed.natural ? "semantic" : "keyword",
   );
 }
 
@@ -183,9 +212,20 @@ const TYPESENSE_COMMON = {
   exhaustive_search: false,
 } as const;
 
+async function collectionHasEmbedding() {
+  try {
+    const client = await getTypesenseClient();
+    const collection = await client.collections(TYPESENSE_COLLECTION).retrieve();
+    return collection.fields?.some((field) => field.name === "embedding") ?? false;
+  } catch {
+    return false;
+  }
+}
+
 async function searchTypesense(
   filters: SearchFilters,
-  resolved: ReturnType<typeof resolveSearchQuery>,
+  resolved: ResolvedQuery,
+  parsed: NaturalQuery,
 ): Promise<SearchResult | null> {
   const available = await typesenseAvailable();
   if (!available) return null;
@@ -205,6 +245,7 @@ async function searchTypesense(
     return clauses;
   };
   const clauses = clausesFor();
+  const hasEmbedding = await collectionHasEmbedding();
 
   const client = await getTypesenseClient();
   const collection = client.collections(TYPESENSE_COLLECTION).documents();
@@ -214,9 +255,10 @@ async function searchTypesense(
     queryBy: string,
     weights?: string,
     extraFilter?: string,
-    overrides?: { num_typos?: number },
+    overrides?: Record<string, string | number | boolean | undefined | null>,
   ) => {
     const filter = [clauses.join(" && "), extraFilter].filter(Boolean).join(" && ") || undefined;
+    const { sort_by: sortBy, ...rest } = overrides ?? {};
     const response = await collection.search({
       q,
       query_by: queryBy,
@@ -225,9 +267,12 @@ async function searchTypesense(
       facet_by: "topicSlug,authorSlug,year",
       page: 1,
       per_page: fetchSize,
-      sort_by: q === "*" ? "publishedAtTs:desc" : "_text_match:desc,publishedAtTs:desc",
+      exclude_fields: hasEmbedding ? "embedding" : undefined,
       ...TYPESENSE_COMMON,
-      ...overrides,
+      ...(sortBy === null
+        ? {}
+        : { sort_by: sortBy ?? (q === "*" ? "publishedAtTs:desc" : "_text_match:desc,publishedAtTs:desc") }),
+      ...rest,
     });
     const hits: SearchHit[] = (response.hits ?? [])
       .map((hit) => {
@@ -252,37 +297,94 @@ async function searchTypesense(
       .map((entry) => ({ value: String(entry.value), count: entry.count }))
       .sort((a, b) => (field === "year" ? Number(b.value) - Number(a.value) : b.count - a.count));
 
-  const facetQuery = resolved.q || "*";
+  const facetQuery = parsed.keywordQ || parsed.semanticQ || "*";
   const [topicFacets, authorFacets, yearFacets] = await Promise.all(
     (["topic", "author", "year"] as const).map(async (key) => {
       const field = key === "topic" ? "topicSlug" : key === "author" ? "authorSlug" : "year";
       const filter = clausesFor(key).join(" && ") || undefined;
       const response = await collection.search({
         q: facetQuery,
-        query_by: resolved.q ? "title,author,dek" : "title",
+        query_by: facetQuery === "*" ? "title" : "title,author,dek",
         filter_by: filter,
         facet_by: field,
         max_facet_values: 50,
         per_page: 0,
+        exclude_fields: hasEmbedding ? "embedding" : undefined,
         ...TYPESENSE_COMMON,
       });
       return readFacet(response, field);
     }),
   );
 
+  const finish = (hits: SearchHit[], found: number, mode: SearchResult["mode"]) => {
+    const start = (page - 1) * perPage;
+    return decorateResult(
+      {
+        hits: hits.slice(start, start + perPage),
+        found,
+        page,
+        perPage,
+        engine: "typesense",
+        topics: topicFacets,
+        authors: authorFacets,
+        years: yearFacets,
+      },
+      resolved,
+      parsed,
+      mode,
+    );
+  };
+
   if (!resolved.q) {
     const empty = await run("*", "title");
-    const start = (page - 1) * perPage;
-    return {
-      hits: empty.hits.slice(start, start + perPage),
-      found: empty.response.found ?? empty.hits.length,
-      page,
-      perPage,
-      engine: "typesense",
-      topics: topicFacets,
-      authors: authorFacets,
-      years: yearFacets,
-    };
+    return finish(empty.hits, empty.response.found ?? empty.hits.length, "keyword");
+  }
+
+  const semanticQuery = parsed.intents.length
+    ? `${parsed.semanticQ} ${parsed.intents.join(" ")}`
+    : parsed.semanticQ;
+
+  const runSemantic = async (q: string) => {
+    if (!hasEmbedding || !q) return { hits: [] as SearchHit[] };
+    return run(q, "embedding", undefined, undefined, {
+      prefix: false,
+      num_typos: 0,
+      sort_by: null,
+      vector_query: "embedding:([], k: 60, distance_threshold: 0.60)",
+    });
+  };
+
+  const runHybrid = async (q: string, alpha: number) => {
+    if (!hasEmbedding || !q) return { hits: [] as SearchHit[] };
+    return run(q, "title,author,dek,embedding", "8,5,3,0", undefined, {
+      prefix: "true,true,true,false",
+      num_typos: "1,1,1,0",
+      sort_by: "_text_match:desc",
+      vector_query: `embedding:([], k: 80, alpha: ${alpha})`,
+    });
+  };
+
+  if (parsed.natural) {
+    const semantic = await runSemantic(semanticQuery);
+    if (semantic.hits.length > 0) {
+      return finish(semantic.hits, semantic.hits.length, "semantic");
+    }
+    const hybrid = await runHybrid(semanticQuery, 0.75);
+    if (hybrid.hits.length > 0) {
+      return finish(hybrid.hits, hybrid.hits.length, "semantic");
+    }
+    if (parsed.keywordQ) {
+      const focused = await run(parsed.keywordQ, "title,author,dek,body", "8,5,3,1", undefined, {
+        drop_tokens_threshold: 1,
+      });
+      if (focused.hits.length > 0) {
+        return finish(focused.hits, focused.hits.length, "semantic");
+      }
+    }
+    if (filters.topic || filters.author || filters.year || filters.from || filters.to) {
+      const empty = await run("*", "title");
+      return finish(empty.hits, empty.response.found ?? empty.hits.length, "semantic");
+    }
   }
 
   const literal =
@@ -307,31 +409,27 @@ async function searchTypesense(
     merged = body.hits;
   }
 
-  const start = (page - 1) * perPage;
-  return withDidYouMean(
-    {
-      hits: merged.slice(start, start + perPage),
-      found: merged.length,
-      page,
-      perPage,
-      engine: "typesense",
-      topics: topicFacets,
-      authors: authorFacets,
-      years: yearFacets,
-    },
-    resolved,
-  );
+  if (merged.length === 0 && hasEmbedding) {
+    const semantic = await runSemantic(semanticQuery);
+    if (semantic.hits.length > 0) {
+      return finish(semantic.hits, semantic.hits.length, "semantic");
+    }
+  }
+
+  return finish(merged, merged.length, "keyword");
 }
 
 export async function searchArticles(filters: SearchFilters): Promise<SearchResult> {
   const resolved = resolveSearchQuery(filters.q ?? "");
+  const parsed = parseNaturalQuery(resolved);
+  const effective = applyNaturalFilters(filters, parsed);
   try {
-    const typed = await searchTypesense(filters, resolved);
+    const typed = await searchTypesense(effective, resolved, parsed);
     if (typed) return typed;
   } catch {
     // Fall back to the local archive index.
   }
-  return searchArchive(filters, resolved);
+  return searchArchive(effective, resolved, parsed);
 }
 
 export function parseSearchParams(params: Record<string, string | string[] | undefined>): SearchFilters {

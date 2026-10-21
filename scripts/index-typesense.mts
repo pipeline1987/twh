@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Typesense from "typesense";
+import { articleEmbedText } from "../src/lib/embed-text.ts";
 import { TYPESENSE_SYNONYMS } from "../src/lib/query.ts";
 import type { Article } from "../src/lib/types.ts";
 
@@ -17,7 +18,7 @@ const client = new Typesense.Client({
     },
   ],
   apiKey: process.env.TYPESENSE_API_KEY ?? "wizardherald-dev",
-  connectionTimeoutSeconds: 5,
+  connectionTimeoutSeconds: 180,
 });
 
 const schema = {
@@ -36,6 +37,17 @@ const schema = {
     { name: "publishedAtTs", type: "int64" },
     { name: "year", type: "int32", facet: true },
     { name: "kicker", type: "string", facet: true },
+    { name: "embedText", type: "string", index: false, optional: false },
+    {
+      name: "embedding",
+      type: "float[]",
+      embed: {
+        from: ["embedText"],
+        model_config: {
+          model_name: "ts/all-MiniLM-L12-v2",
+        },
+      },
+    },
   ],
   default_sorting_field: "publishedAtTs",
   token_separators: ["'", "-"],
@@ -66,6 +78,7 @@ async function main() {
     await client.collections(COLLECTION).delete();
   }
 
+  console.log("Creating collection (first run downloads ts/all-MiniLM-L12-v2)…");
   await client.collections().create(schema as Parameters<typeof client.collections.create>[0]);
 
   const documents = articles.map((article) => ({
@@ -82,14 +95,20 @@ async function main() {
     publishedAtTs: Date.parse(`${article.publishedAt}T00:00:00.000Z`),
     year: article.year,
     kicker: article.kicker,
+    embedText: articleEmbedText(article),
   }));
 
-  const result = await client.collections(COLLECTION).documents().import(documents, {
-    action: "upsert",
-  });
-  const failed = result.filter((row) => !row.success);
-  if (failed.length) {
-    throw new Error(`Typesense import failed for ${failed.length} documents`);
+  const batchSize = 40;
+  for (let start = 0; start < documents.length; start += batchSize) {
+    const batch = documents.slice(start, start + batchSize);
+    const result = await client.collections(COLLECTION).documents().import(batch, {
+      action: "upsert",
+    });
+    const failed = result.filter((row) => !row.success);
+    if (failed.length) {
+      throw new Error(`Typesense import failed for ${failed.length} documents at offset ${start}`);
+    }
+    console.log(`Embedded ${Math.min(start + batch.length, documents.length)} / ${documents.length}`);
   }
 
   for (const synonym of TYPESENSE_SYNONYMS) {

@@ -8,7 +8,7 @@ import { parseSearchParams, searchArticles } from "@/lib/search";
 
 export const metadata: Metadata = {
   title: "Search",
-  description: "Search twenty years of Herald copy by topic, author, and date.",
+  description: "Search twenty years of Herald copy in plain English, or by topic, author, and date.",
 };
 
 export default function SearchPage(props: PageProps<"/search">) {
@@ -20,8 +20,8 @@ export default function SearchPage(props: PageProps<"/search">) {
         </p>
         <h1 className="mt-2 font-[family-name:var(--font-herald-display)] text-5xl">Search the archive</h1>
         <p className="mt-3 max-w-2xl text-lg text-ink-soft">
-          Filter by category, correspondent, year, or a date range. Facet counts follow the
-          query. Common misspellings are corrected before we shout at the index.
+          Ask in plain English — loud letters from the owlery, Rita&apos;s 2018 Quidditch copy —
+          or click the facets. Typesense matches meaning as well as spelling.
         </p>
       </header>
       <Suspense fallback={<SearchFallback />}>

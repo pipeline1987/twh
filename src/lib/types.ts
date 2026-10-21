@@ -62,14 +62,24 @@ export type SearchHit = {
   snippet: string;
 };
 
+export type UnderstoodFilters = {
+  topic?: string;
+  author?: string;
+  year?: string;
+  from?: string;
+  to?: string;
+};
+
 export type SearchResult = {
   hits: SearchHit[];
   found: number;
   page: number;
   perPage: number;
   engine: "typesense" | "archive";
+  mode: "keyword" | "semantic";
   topics: FacetValue[];
   authors: FacetValue[];
   years: FacetValue[];
   didYouMean?: string;
+  understood?: UnderstoodFilters;
 };
