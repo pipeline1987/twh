@@ -1,19 +1,7 @@
 import Link from "next/link";
-import { authorBySlug, topicBySlug } from "@/data/catalog";
 import { formatShortDate } from "@/lib/format";
+import { searchHref } from "@/lib/search-url";
 import type { SearchFilters, SearchResult } from "@/lib/types";
-
-function hrefFor(filters: SearchFilters, page: number) {
-  const params = new URLSearchParams();
-  if (filters.q) params.set("q", filters.q);
-  if (filters.topic) params.set("topic", filters.topic);
-  if (filters.author) params.set("author", filters.author);
-  if (filters.from) params.set("from", filters.from);
-  if (filters.to) params.set("to", filters.to);
-  if (page > 1) params.set("page", String(page));
-  const query = params.toString();
-  return query ? `/search?${query}` : "/search";
-}
 
 export function SearchResults({
   result,
@@ -52,7 +40,7 @@ export function SearchResults({
 
       {result.found === 0 ? (
         <p className="mt-8 max-w-xl text-lg text-ink-soft">
-          The Owlery is empty. Try another desk, another correspondent, or a wider date.
+          The Owlery is empty. Clear a facet, widen the dates, or try another spelling.
           Howgwarts still counts as Hogwarts.
         </p>
       ) : (
@@ -60,7 +48,13 @@ export function SearchResults({
           {result.hits.map((hit) => (
             <li key={hit.article.id} className="py-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-howler">
-                {hit.article.kicker} · {formatShortDate(hit.article.publishedAt)}
+                <Link href={searchHref(filters, { topic: hit.article.topicSlug })} className="hover:text-ink">
+                  {hit.article.kicker}
+                </Link>
+                {" · "}
+                <Link href={searchHref(filters, { year: String(hit.article.year) })} className="hover:text-ink">
+                  {formatShortDate(hit.article.publishedAt)}
+                </Link>
               </p>
               <h3 className="mt-1 font-[family-name:var(--font-herald-display)] text-2xl leading-tight">
                 <Link href={`/article/${hit.article.slug}`} className="hover:text-howler">
@@ -69,11 +63,11 @@ export function SearchResults({
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-soft">{hit.snippet}</p>
               <p className="mt-2 text-xs uppercase tracking-[0.16em] text-ink-soft">
-                <Link href={`/author/${hit.article.authorSlug}`} className="hover:text-howler">
+                <Link href={searchHref(filters, { author: hit.article.authorSlug })} className="hover:text-howler">
                   {hit.article.author}
                 </Link>
                 {" · "}
-                <Link href={`/topic/${hit.article.topicSlug}`} className="hover:text-howler">
+                <Link href={searchHref(filters, { topic: hit.article.topicSlug })} className="hover:text-howler">
                   {hit.article.topic}
                 </Link>
               </p>
@@ -85,7 +79,7 @@ export function SearchResults({
       {pageCount > 1 ? (
         <nav className="mt-8 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.16em]">
           {result.page > 1 ? (
-            <Link href={hrefFor(filters, result.page - 1)} className="hover:text-howler">
+            <Link href={searchHref(filters, { page: result.page - 1 })} className="hover:text-howler">
               Previous page
             </Link>
           ) : (
@@ -95,38 +89,13 @@ export function SearchResults({
             Page {result.page} of {pageCount}
           </span>
           {result.page < pageCount ? (
-            <Link href={hrefFor(filters, result.page + 1)} className="hover:text-howler">
+            <Link href={searchHref(filters, { page: result.page + 1 })} className="hover:text-howler">
               Next page
             </Link>
           ) : (
             <span />
           )}
         </nav>
-      ) : null}
-
-      {result.topics.length > 0 || result.authors.length > 0 ? (
-        <aside className="mt-10 grid gap-6 border-t border-ink pt-6 text-sm md:grid-cols-2">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em]">In this result</p>
-            <ul className="mt-2">
-              {result.topics.map((topic) => (
-                <li key={topic.value}>
-                  {topicBySlug(topic.value)?.name ?? topic.value} · {topic.count}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em]">Bylines</p>
-            <ul className="mt-2">
-              {result.authors.map((author) => (
-                <li key={author.value}>
-                  {authorBySlug(author.value)?.name ?? author.value} · {author.count}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
       ) : null}
     </div>
   );

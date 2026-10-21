@@ -41,10 +41,16 @@ export type Topic = {
   blurb: string;
 };
 
+export type FacetValue = {
+  value: string;
+  count: number;
+};
+
 export type SearchFilters = {
   q?: string;
   topic?: string;
   author?: string;
+  year?: string;
   from?: string;
   to?: string;
   page?: number;
@@ -62,7 +68,8 @@ export type SearchResult = {
   page: number;
   perPage: number;
   engine: "typesense" | "archive";
-  topics: { value: string; count: number }[];
-  authors: { value: string; count: number }[];
+  topics: FacetValue[];
+  authors: FacetValue[];
+  years: FacetValue[];
   didYouMean?: string;
 };

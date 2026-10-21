@@ -53,12 +53,29 @@ function scoreArticle(article: Article, terms: string[], allowBody: boolean) {
   return score;
 }
 
-function applyFacets(hits: Article[]) {
+type FacetKey = "topic" | "author" | "year";
+
+function applyStructured(articles: Article[], filters: SearchFilters, omit?: FacetKey) {
+  return articles.filter((article) => {
+    if (omit !== "topic" && filters.topic && article.topicSlug !== filters.topic) return false;
+    if (omit !== "author" && filters.author && article.authorSlug !== filters.author) return false;
+    if (omit !== "year" && filters.year && String(article.year) !== filters.year) return false;
+    if (!filters.year || omit === "year") {
+      if (filters.from && article.publishedAt < filters.from) return false;
+      if (filters.to && article.publishedAt > filters.to) return false;
+    }
+    return true;
+  });
+}
+
+function countFacets(articles: Article[]) {
   const topicCounts = new Map<string, number>();
   const authorCounts = new Map<string, number>();
-  for (const article of hits) {
+  const yearCounts = new Map<string, number>();
+  for (const article of articles) {
     topicCounts.set(article.topicSlug, (topicCounts.get(article.topicSlug) ?? 0) + 1);
     authorCounts.set(article.authorSlug, (authorCounts.get(article.authorSlug) ?? 0) + 1);
+    yearCounts.set(String(article.year), (yearCounts.get(String(article.year)) ?? 0) + 1);
   }
   return {
     topics: TOPICS.map((topic) => ({
@@ -69,6 +86,17 @@ function applyFacets(hits: Article[]) {
       value: author.slug,
       count: authorCounts.get(author.slug) ?? 0,
     })).filter((author) => author.count > 0),
+    years: [...yearCounts.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => Number(b.value) - Number(a.value)),
+  };
+}
+
+function archiveFacets(matched: Article[], filters: SearchFilters) {
+  return {
+    topics: countFacets(applyStructured(matched, filters, "topic")).topics,
+    authors: countFacets(applyStructured(matched, filters, "author")).authors,
+    years: countFacets(applyStructured(matched, filters, "year")).years,
   };
 }
 
@@ -81,14 +109,8 @@ function searchArchive(filters: SearchFilters, resolved: ReturnType<typeof resol
   const perPage = filters.perPage ?? DEFAULT_PER_PAGE;
   const terms = resolved.terms;
 
-  let pool = getArticles();
-  if (filters.topic) pool = pool.filter((article) => article.topicSlug === filters.topic);
-  if (filters.author) pool = pool.filter((article) => article.authorSlug === filters.author);
-  if (filters.from) pool = pool.filter((article) => article.publishedAt >= filters.from!);
-  if (filters.to) pool = pool.filter((article) => article.publishedAt <= filters.to!);
-
-  const rank = (allowBody: boolean) =>
-    pool
+  const rank = (articles: Article[], allowBody: boolean) =>
+    articles
       .map((article) => ({ article, score: scoreArticle(article, terms, allowBody) }))
       .filter((entry) => (terms.length === 0 ? true : entry.score > 0))
       .sort((a, b) => {
@@ -96,12 +118,16 @@ function searchArchive(filters: SearchFilters, resolved: ReturnType<typeof resol
         return a.article.publishedAt < b.article.publishedAt ? 1 : -1;
       });
 
-  const ranked = (() => {
-    const focused = rank(false);
-    return focused.length > 0 ? focused : rank(true);
+  const textMatched = (() => {
+    const focused = rank(getArticles(), false);
+    return focused.length > 0 ? focused : rank(getArticles(), true);
   })();
+  const matchedArticles = textMatched.map((entry) => entry.article);
+  const ranked = applyStructured(matchedArticles, filters)
+    .map((article) => textMatched.find((entry) => entry.article.id === article.id)!)
+    .filter(Boolean);
 
-  const facets = applyFacets(ranked.map((entry) => entry.article));
+  const facets = archiveFacets(matchedArticles, filters);
   const start = (page - 1) * perPage;
   const hits: SearchHit[] = ranked.slice(start, start + perPage).map((entry) => ({
     article: entry.article,
@@ -167,11 +193,18 @@ async function searchTypesense(
   const page = Math.max(1, filters.page ?? 1);
   const perPage = filters.perPage ?? DEFAULT_PER_PAGE;
   const fetchSize = Math.min(250, Math.max(perPage * page, 40));
-  const clauses: string[] = [];
-  if (filters.topic) clauses.push(`topicSlug:=${filters.topic}`);
-  if (filters.author) clauses.push(`authorSlug:=${filters.author}`);
-  if (filters.from) clauses.push(`publishedAtTs:>=${Date.parse(`${filters.from}T00:00:00.000Z`)}`);
-  if (filters.to) clauses.push(`publishedAtTs:<=${Date.parse(`${filters.to}T23:59:59.000Z`)}`);
+  const clausesFor = (omit?: FacetKey) => {
+    const clauses: string[] = [];
+    if (omit !== "topic" && filters.topic) clauses.push(`topicSlug:=${filters.topic}`);
+    if (omit !== "author" && filters.author) clauses.push(`authorSlug:=${filters.author}`);
+    if (omit !== "year" && filters.year) clauses.push(`year:=${filters.year}`);
+    if (!filters.year || omit === "year") {
+      if (filters.from) clauses.push(`publishedAtTs:>=${Date.parse(`${filters.from}T00:00:00.000Z`)}`);
+      if (filters.to) clauses.push(`publishedAtTs:<=${Date.parse(`${filters.to}T23:59:59.000Z`)}`);
+    }
+    return clauses;
+  };
+  const clauses = clausesFor();
 
   const client = await getTypesenseClient();
   const collection = client.collections(TYPESENSE_COLLECTION).documents();
@@ -189,7 +222,7 @@ async function searchTypesense(
       query_by: queryBy,
       query_by_weights: weights,
       filter_by: filter,
-      facet_by: "topicSlug,authorSlug",
+      facet_by: "topicSlug,authorSlug,year",
       page: 1,
       per_page: fetchSize,
       sort_by: q === "*" ? "publishedAtTs:desc" : "_text_match:desc,publishedAtTs:desc",
@@ -211,6 +244,32 @@ async function searchTypesense(
     return { hits, response };
   };
 
+  const readFacet = (
+    response: Awaited<ReturnType<typeof run>>["response"],
+    field: string,
+  ) =>
+    (response?.facet_counts?.find((facet) => facet.field_name === field)?.counts ?? [])
+      .map((entry) => ({ value: String(entry.value), count: entry.count }))
+      .sort((a, b) => (field === "year" ? Number(b.value) - Number(a.value) : b.count - a.count));
+
+  const facetQuery = resolved.q || "*";
+  const [topicFacets, authorFacets, yearFacets] = await Promise.all(
+    (["topic", "author", "year"] as const).map(async (key) => {
+      const field = key === "topic" ? "topicSlug" : key === "author" ? "authorSlug" : "year";
+      const filter = clausesFor(key).join(" && ") || undefined;
+      const response = await collection.search({
+        q: facetQuery,
+        query_by: resolved.q ? "title,author,dek" : "title",
+        filter_by: filter,
+        facet_by: field,
+        max_facet_values: 50,
+        per_page: 0,
+        ...TYPESENSE_COMMON,
+      });
+      return readFacet(response, field);
+    }),
+  );
+
   if (!resolved.q) {
     const empty = await run("*", "title");
     const start = (page - 1) * perPage;
@@ -220,12 +279,9 @@ async function searchTypesense(
       page,
       perPage,
       engine: "typesense",
-      topics: (empty.response.facet_counts?.find((facet) => facet.field_name === "topicSlug")?.counts ?? []).map(
-        (entry) => ({ value: entry.value, count: entry.count }),
-      ),
-      authors: (empty.response.facet_counts?.find((facet) => facet.field_name === "authorSlug")?.counts ?? []).map(
-        (entry) => ({ value: entry.value, count: entry.count }),
-      ),
+      topics: topicFacets,
+      authors: authorFacets,
+      years: yearFacets,
     };
   }
 
@@ -252,7 +308,6 @@ async function searchTypesense(
   }
 
   const start = (page - 1) * perPage;
-  const facetSource = focused.response ?? literal.response;
   return withDidYouMean(
     {
       hits: merged.slice(start, start + perPage),
@@ -260,12 +315,9 @@ async function searchTypesense(
       page,
       perPage,
       engine: "typesense",
-      topics: (facetSource?.facet_counts?.find((facet) => facet.field_name === "topicSlug")?.counts ?? []).map(
-        (entry) => ({ value: entry.value, count: entry.count }),
-      ),
-      authors: (facetSource?.facet_counts?.find((facet) => facet.field_name === "authorSlug")?.counts ?? []).map(
-        (entry) => ({ value: entry.value, count: entry.count }),
-      ),
+      topics: topicFacets,
+      authors: authorFacets,
+      years: yearFacets,
     },
     resolved,
   );
@@ -292,6 +344,7 @@ export function parseSearchParams(params: Record<string, string | string[] | und
     q: read("q") ?? "",
     topic: read("topic") || undefined,
     author: read("author") || undefined,
+    year: read("year") || undefined,
     from: read("from") || undefined,
     to: read("to") || undefined,
     page: Number.isFinite(page) ? page : 1,
