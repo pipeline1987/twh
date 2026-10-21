@@ -20,8 +20,8 @@ export default function SearchPage(props: PageProps<"/search">) {
         </p>
         <h1 className="mt-2 font-[family-name:var(--font-herald-display)] text-5xl">Search the archive</h1>
         <p className="mt-3 max-w-2xl text-lg text-ink-soft">
-          Filter by desk, correspondent, and date. Typesense handles typos when Docker is up;
-          the bound parchment index answers when it is not. Howgwarts is accepted.
+          Filter by desk, correspondent, and date. Common misspellings are corrected before
+          we shout at the index. Typesense handles the rest when Docker is up.
         </p>
       </header>
       <Suspense fallback={<SearchFallback />}>

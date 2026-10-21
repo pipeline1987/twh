@@ -64,4 +64,5 @@ export type SearchResult = {
   engine: "typesense" | "archive";
   topics: { value: string; count: number }[];
   authors: { value: string; count: number }[];
+  didYouMean?: string;
 };

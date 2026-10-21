@@ -37,7 +37,16 @@ export function SearchResults({
           </h2>
         </div>
         {filters.q ? (
-          <p className="text-sm italic text-ink-soft">for “{filters.q}”</p>
+          <p className="text-sm italic text-ink-soft">
+            {result.didYouMean ? (
+              <>
+                for “{result.didYouMean}”
+                <span className="not-italic text-ink-soft/80"> (from “{filters.q}”)</span>
+              </>
+            ) : (
+              <>for “{filters.q}”</>
+            )}
+          </p>
         ) : null}
       </div>
 

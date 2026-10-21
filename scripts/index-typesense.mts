@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Typesense from "typesense";
+import { TYPESENSE_SYNONYMS } from "../src/lib/query.ts";
 import type { Article } from "../src/lib/types.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -91,13 +92,10 @@ async function main() {
     throw new Error(`Typesense import failed for ${failed.length} documents`);
   }
 
-  const synonyms = [
-    { id: "howler", synonyms: ["howler", "howlers", "loud letter"] },
-    { id: "quidditch", synonyms: ["quidditch", "broom sport"] },
-  ];
-  for (const synonym of synonyms) {
+  for (const synonym of TYPESENSE_SYNONYMS) {
     await client.collections(COLLECTION).synonyms().upsert(synonym.id, {
       synonyms: synonym.synonyms,
+      ...("root" in synonym && synonym.root ? { root: synonym.root } : {}),
     });
   }
 
