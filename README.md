@@ -2,7 +2,7 @@
 
 Dummy Hogwarts news. Headlines delivered at maximum volume.
 
-A fan newsroom with **353 original dispatches** spanning **2006–2026**. Readers can browse the bound archive by year, desk, or correspondent, and search by **topic**, **author**, **date**, or a **plain-English sentence**.
+A fan newsroom with **353 original dispatches** spanning **2006–2026**. Readers can browse the bound archive by year, desk, or correspondent, search by **topic**, **author**, **date**, or a **plain-English sentence**, and **ask the Owlery** questions the paper actually printed.
 
 ## Tools
 
@@ -35,6 +35,8 @@ When a Typesense node is up, search uses typo-tolerant indexing, synonyms (`Howg
 
 The first `search:index` downloads the MiniLM model into `typesense-data` and embeds every dispatch. Later indexes reuse the model. Search shouts are written to `analytics-data/ledger.json` (gitignored) and shown on `/search/desk`. Typesense also aggregates popular and no-hit queries when analytics is enabled on the node.
 
+`/ask` is a clerk over the same index. It searches, opens the matching dispatches, and answers only from that parchment. Without `OPENAI_API_KEY` it quotes the archive. With a key it can draft after the same tool calls.
+
 ```bash
 npm run search:up
 npm run search:index
@@ -66,6 +68,7 @@ The generator writes `src/data/articles.json`. All stories are original dummy jo
 - `/archive` and `/archive/[year]` — twenty-year bound volumes
 - `/search` — natural-language search plus topic, author, and date facets
 - `/search/desk` — search analytics: loudest queries, silent shouts, and clicks
+- `/ask` — Ask the Owlery: an archive clerk that searches, reads, and answers from Herald copy
 - `/topic/[slug]` / `/author/[slug]` — desks and bylines
 - `/article/[slug]` — a full dispatch
 - `/about` — masthead

@@ -10,7 +10,11 @@ export function SiteFooter() {
           <p className="mt-2 text-sm italic text-howler">{SITE.tagline}</p>
           <p className="mt-3 max-w-sm text-sm text-ink-soft">
             Dummy Hogwarts news for a fan newsroom. Twenty years of archived parchment,
-            searchable by topic, author, and date. Delivery by owl, Howler, or browser.
+            searchable by topic, author, and date.{" "}
+            <Link href="/ask" className="hover:text-howler">
+              Ask the Owlery
+            </Link>{" "}
+            if you want a clerk to read it aloud.
           </p>
         </div>
         <div>

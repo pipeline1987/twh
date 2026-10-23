@@ -247,6 +247,7 @@ async function searchTypesense(
   };
   const clauses = clausesFor();
   const hasEmbedding = await collectionHasEmbedding();
+  const track = !filters.skipAnalytics;
 
   const client = await getTypesenseClient();
   const collection = client.collections(TYPESENSE_COLLECTION).documents();
@@ -351,7 +352,7 @@ async function searchTypesense(
       prefix: false,
       num_typos: 0,
       sort_by: null,
-      enable_analytics: true,
+      enable_analytics: track,
       vector_query: "embedding:([], k: 60, distance_threshold: 0.60)",
     });
   };
@@ -362,7 +363,7 @@ async function searchTypesense(
       prefix: "true,true,true,false",
       num_typos: "1,1,1,0",
       sort_by: "_text_match:desc",
-      enable_analytics: true,
+      enable_analytics: track,
       vector_query: `embedding:([], k: 80, alpha: ${alpha})`,
     });
   };
@@ -397,7 +398,7 @@ async function searchTypesense(
   const exactOriginalInTitle = literal.hits.some((hit) =>
     normalizeQuery(hit.article.title).includes(normalizeQuery(resolved.original)),
   );
-  const focused = await run(resolved.q, "title,author", "8,5", undefined, { enable_analytics: true });
+  const focused = await run(resolved.q, "title,author", "8,5", undefined, { enable_analytics: track });
   const desk = deskForTerms(resolved.terms);
   const deskResults =
     desk && !filters.topic && !exactOriginalInTitle
@@ -409,7 +410,7 @@ async function searchTypesense(
 
   if (merged.length === 0) {
     const body = await run(resolved.q, "title,author,dek,body", "8,5,3,1", undefined, {
-      enable_analytics: true,
+      enable_analytics: track,
     });
     merged = body.hits;
   }

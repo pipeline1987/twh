@@ -55,6 +55,7 @@ export type SearchFilters = {
   to?: string;
   page?: number;
   perPage?: number;
+  skipAnalytics?: boolean;
 };
 
 export type SearchHit = {

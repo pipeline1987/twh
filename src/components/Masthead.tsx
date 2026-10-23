@@ -45,6 +45,9 @@ export function Masthead({
           <Link href="/search" className="hover:text-howler">
             Search
           </Link>
+          <Link href="/ask" className="hover:text-howler">
+            Owlery
+          </Link>
           <Link href="/search/desk" className="hover:text-howler">
             Index desk
           </Link>
